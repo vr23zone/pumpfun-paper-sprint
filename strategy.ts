@@ -422,7 +422,9 @@ export function createStrategy() {
     const t = tapes.get(p.mint);
     if (t) {
       const w15 = windowStats(t, slot, 15);
-      if (w15.netSol < fade) return 'fade';
+      // Fade only cuts losers: when flow turns against us while underwater,
+      // exit. A winner mid-bounce must not be sold on one big sell print.
+      if (w15.netSol < fade && value < cost * 1.02) return 'fade';
       // Any single recorded sell >= bigSellSol since we opened.
       for (const tr of t.trades) {
         if (tr.slot > p.openedSlot && !tr.buy && tr.sol >= P.bigSellSol) return 'bigsell';
