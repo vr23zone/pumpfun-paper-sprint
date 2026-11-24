@@ -20,12 +20,12 @@ export const PARAMS = {
   // Entry B — oversold bounce / higher low forming.
   bounceMinAgeSlots: 120,
   bounceDropPct: 0.2, // V10 value restored: 30% dips were falling knives
-  bounceConfirmPct: 0, // price must already be >= low15 * (1 + confirm)
+  bounceConfirmPct: 0.03, // V18: price already >= low15 * 1.03 (winners bounced 8.6% off low vs 5.4%)
   bounceNetSol15Min: 0, // net SOL over the last 15 slots
-  bounceMinRealSol: 2,
+  bounceMinRealSol: 5, // V18: winners sat on 19 SOL real vs 13 (bigger coins bounce better)
   bounceMinBuyers: 5,
-  bounceBuySol15Min: 0.2, // V13: B needs dominant recent buying (buy SOL + share)
-  bounceBuyShare15Min: 0.65,
+  bounceBuySol15Min: 2, // V18: winners had 5.25 SOL bought in 15 slots vs 2.75
+  bounceBuys15Min: 6, // V18: winners had 12 buys in 15 slots vs 7
   bounceBuySol: 0.05,
   // Exits (filled in by stage 2; values here are the tuned defaults).
   // V14: per-kind exits — A trades (strong coins) may run, B trades scalp.
@@ -363,6 +363,8 @@ export function createStrategy() {
     // Price back above the low of the last 15 slots: a higher low is forming.
     if (px <= w15.low * (1 + P.bounceConfirmPct)) return false;
     if (w15.netSol < P.bounceNetSol15Min) return false;
+    if (w15.buySol < P.bounceBuySol15Min) return false;
+    if (w15.buys < P.bounceBuys15Min) return false;
     if (t.buyers.size < P.bounceMinBuyers) return false;
     const realSol = solOf(curve.real_quote_reserves);
     if (realSol < P.bounceMinRealSol) return false;
