@@ -32,7 +32,7 @@ export const PARAMS = {
   trailArmMult: 1.1,
   trailDropPct: 0.2, // exit when value < peak * (1 - trailDropPct)
   maxHoldSlots: 900,
-  fadeNetSol15: -2, // V6: -0.5 fired on noise (71/92 exits) and cut bounces early
+  fadeNetSol15: -0.5, // V5 value: -2.0 let trades bleed to SL instead (V6 worse)
   bigSellSol: 5,
   cooldownSlots: 150,
   // Risk / pacing.
@@ -78,6 +78,7 @@ interface PosInfo {
   peakLamports: number;
   exiting: boolean;
   probe: boolean;
+  kind: 'A' | 'B' | 'probe';
 }
 
 function priceOf(vq: bigint, vt: bigint): number {
@@ -103,6 +104,13 @@ export function createStrategy() {
     exits: {} as Record<string, number>,
     buyFills: 0,
     sellFills: 0,
+    // Realized PnL (lamports, net of fill-time quote) by entry kind.
+    pnlA: 0,
+    pnlB: 0,
+    pnlProbe: 0,
+    winsA: 0,
+    winsB: 0,
+    winsProbe: 0,
   };
   let fillsCount = 0;
   let firstBlockTime = 0;
@@ -201,6 +209,7 @@ export function createStrategy() {
             peakLamports: Number(f.quote_lamports),
             exiting: false,
             probe: pb.probe,
+            kind: pb.kind,
           });
           if (pb.probe) probeStage = 'buyFilled';
         } else if (pb.probe) {
@@ -224,6 +233,19 @@ export function createStrategy() {
         const reason = pendingSells.get(f.mint) ?? 'unknown';
         stats.exits[reason] = (stats.exits[reason] ?? 0) + 1;
         const p = positions.get(f.mint);
+        if (p) {
+          const pnl = Number(f.quote_lamports) - p.investedLamports;
+          if (p.probe) {
+            stats.pnlProbe += pnl;
+            if (pnl > 0) stats.winsProbe++;
+          } else if (p.kind === 'A') {
+            stats.pnlA += pnl;
+            if (pnl > 0) stats.winsA++;
+          } else {
+            stats.pnlB += pnl;
+            if (pnl > 0) stats.winsB++;
+          }
+        }
         if (p) {
           const t = tapes.get(f.mint);
           if (t) t.lastExitSlot = f.slot;
