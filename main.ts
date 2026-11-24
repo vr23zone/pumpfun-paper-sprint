@@ -23,5 +23,6 @@ await runBot({
       `done (${done.reason}): cash ${state.cash} lamports, ` +
         `${state.positions.size} positions left, ${state.curves.size} curves seen`,
     );
+    console.error(`BOT-STATS ${JSON.stringify(strategy.stats)}`);
   },
 });

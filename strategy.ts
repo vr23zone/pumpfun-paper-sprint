@@ -9,8 +9,8 @@ export const PARAMS = {
   // Entry A — dip buy after a run-up and pullback.
   dipMinAgeSlots: 300,
   dipRunupPct: 0.25, // price >= firstPrice * (1 + runup)
-  dipPullbackPct: 0.12, // price <= high60 * (1 - pullback)
-  dipNetSol30: 0.3, // net SOL bought over last 30 slots
+  dipPullbackPct: 0.1, // price <= high60 * (1 - pullback)
+  dipNetSol30: 0.2, // net SOL bought over last 30 slots
   dipBuys30: 3, // buys in last 30 slots
   dipMinBuyers: 5,
   dipMinRealSol: 2,
@@ -18,17 +18,17 @@ export const PARAMS = {
   dipBuySol: 0.05,
   // Entry B — oversold bounce / higher low forming.
   bounceMinAgeSlots: 120,
-  bounceDropPct: 0.2, // price <= high60 * (1 - drop)
+  bounceDropPct: 0.15, // price <= high60 * (1 - drop)
   bounceMinRealSol: 2,
   bounceMinBuyers: 5,
   bounceBuySol: 0.05,
   // Exits (filled in by stage 2; values here are the tuned defaults).
-  takeProfitMult: 1.18,
-  stopLossMult: 0.88,
-  trailArmMult: 1.1,
-  trailDropPct: 0.2, // exit when value < peak * (1 - trailDropPct)
-  maxHoldSlots: 900,
-  fadeNetSol15: -0.5,
+  takeProfitMult: 1.1,
+  stopLossMult: 0.95,
+  trailArmMult: 1.06,
+  trailDropPct: 0.15, // exit when value < peak * (1 - trailDropPct)
+  maxHoldSlots: 600,
+  fadeNetSol15: -0.3,
   bigSellSol: 5,
   cooldownSlots: 150,
   // Risk / pacing.
@@ -36,9 +36,11 @@ export const PARAMS = {
   maxExposureSol: 5,
   probeBuySol: 0.01,
   probeMinRealSol: 0.015,
+  maxProbes: 30, // hard cap on probe round trips per run
   paceCoins: 22,
   paceFills: 200,
   paceWindowSec: 14400,
+  paceMinFrac: 0.25, // do not probe before 25% of the pace window has elapsed
   buySlippageBps: 1500,
   sellSlippageBps: 10000,
   maxNewBuysPerBatch: 3,
@@ -86,9 +88,18 @@ function solOf(lamports: bigint): number {
 export function createStrategy() {
   const tapes = new Map<string, CurveTape>();
   const positions = new Map<string, PosInfo>();
-  const pendingBuys = new Map<string, { mint: string; probe: boolean }>();
-  const pendingSells = new Set<string>(); // mints with a sell in flight
+  const pendingBuys = new Map<string, { mint: string; probe: boolean; kind: 'A' | 'B' | 'probe' }>();
+  const pendingSells = new Map<string, string>(); // mint -> exit reason in flight
   const coinsTraded = new Set<string>();
+  const stats = {
+    entriesA: 0,
+    entriesB: 0,
+    probesSent: 0,
+    probesFilled: 0,
+    exits: {} as Record<string, number>,
+    buyFills: 0,
+    sellFills: 0,
+  };
   let fillsCount = 0;
   let firstBlockTime = 0;
   let latestBlockTime = 0;
@@ -155,6 +166,7 @@ export function createStrategy() {
         if (p) {
           const t = tapes.get(f.mint);
           if (t) t.lastExitSlot = f.slot;
+          stats.exits.complete = (stats.exits.complete ?? 0) + 1;
           positions.delete(f.mint);
           pendingSells.delete(f.mint);
           if (probeMint === f.mint) {
@@ -168,6 +180,10 @@ export function createStrategy() {
       if (pb) {
         pendingBuys.delete(f.client_id);
         if (f.status === 'filled') {
+          stats.buyFills++;
+          if (pb.kind === 'A') stats.entriesA++;
+          else if (pb.kind === 'B') stats.entriesB++;
+          else stats.probesFilled++;
           coinsTraded.add(f.mint);
           const curve = state.curves.get(f.mint);
           const px = curve ? priceOf(curve.virtual_quote_reserves, curve.virtual_token_reserves) : 0;
@@ -200,6 +216,9 @@ export function createStrategy() {
         continue;
       }
       if (f.side === 'sell' && f.status === 'filled') {
+        stats.sellFills++;
+        const reason = pendingSells.get(f.mint) ?? 'unknown';
+        stats.exits[reason] = (stats.exits[reason] ?? 0) + 1;
         const p = positions.get(f.mint);
         if (p) {
           const t = tapes.get(f.mint);
@@ -332,26 +351,26 @@ export function createStrategy() {
     return Number(holding.token_amount) * px;
   }
 
-  function shouldExit(state: BotState, p: PosInfo, slot: number): boolean {
+  function shouldExit(state: BotState, p: PosInfo, slot: number): string | null {
     const P = PARAMS;
     const value = positionValueLamports(state, p);
     const cost = p.investedLamports;
-    if (value <= 0 || cost <= 0) return false;
-    if (value >= cost * P.takeProfitMult) return true;
-    if (value < cost * P.stopLossMult) return true;
+    if (value <= 0 || cost <= 0) return null;
+    if (value >= cost * P.takeProfitMult) return 'tp';
+    if (value < cost * P.stopLossMult) return 'sl';
     if (value > p.peakLamports) p.peakLamports = value;
-    if (value >= cost * P.trailArmMult && value < p.peakLamports * (1 - P.trailDropPct)) return true;
-    if (slot - p.openedSlot > P.maxHoldSlots && value < cost * P.trailArmMult) return true;
+    if (value >= cost * P.trailArmMult && value < p.peakLamports * (1 - P.trailDropPct)) return 'trail';
+    if (slot - p.openedSlot > P.maxHoldSlots && value < cost * P.trailArmMult) return 'time';
     const t = tapes.get(p.mint);
     if (t) {
       const w15 = windowStats(t, slot, 15);
-      if (w15.netSol < P.fadeNetSol15) return true;
+      if (w15.netSol < P.fadeNetSol15) return 'fade';
       // Any single recorded sell >= bigSellSol since we opened.
       for (const tr of t.trades) {
-        if (tr.slot > p.openedSlot && !tr.buy && tr.sol >= P.bigSellSol) return true;
+        if (tr.slot > p.openedSlot && !tr.buy && tr.sol >= P.bigSellSol) return 'bigsell';
       }
     }
-    return false;
+    return null;
   }
 
   // ---- probe pacing: keep the run above the guardrail pace ----
@@ -359,13 +378,16 @@ export function createStrategy() {
     if (firstBlockTime === 0 || latestBlockTime <= firstBlockTime) return false;
     const elapsed = latestBlockTime - firstBlockTime;
     const frac = Math.min(1, elapsed / PARAMS.paceWindowSec);
+    if (frac < PARAMS.paceMinFrac) return false;
+    // Coins only: fills follow from round trips. Probing for fills alone
+    // overshoots (each probe is 2 fills) and bleeds fees.
     const needCoins = PARAMS.paceCoins * frac;
-    const needFills = PARAMS.paceFills * frac;
-    return coinsTraded.size < needCoins || fillsCount < needFills;
+    return coinsTraded.size < needCoins;
   }
 
   function maybeProbe(state: BotState, slot: number, orders: OrderInput[]): void {
     if (probeStage !== 'idle' || probeMint !== null) return;
+    if (stats.probesSent >= PARAMS.maxProbes) return;
     if (!paceLagging()) return;
     if (state.committedPositionCount() >= PARAMS.maxOpenPositions) return;
     const amount = BigInt(Math.round(PARAMS.probeBuySol * LAMPORTS_PER_SOL));
@@ -388,7 +410,8 @@ export function createStrategy() {
     }
     if (!best) return;
     const cid = state.clientId();
-    pendingBuys.set(cid, { mint: best.mint, probe: true });
+    pendingBuys.set(cid, { mint: best.mint, probe: true, kind: 'probe' });
+    stats.probesSent++;
     best.lastAttemptSlot = slot;
     probeMint = best.mint;
     probeStage = 'buySent';
@@ -416,7 +439,7 @@ export function createStrategy() {
         // Probe: sell the whole position as soon as the buy has landed.
         if (probeStage === 'buyFilled' && probeMint === p.mint) {
           p.exiting = true;
-          pendingSells.add(p.mint);
+          pendingSells.set(p.mint, 'probe');
           orders.push({
             side: 'sell',
             client_id: state.clientId(),
@@ -427,9 +450,10 @@ export function createStrategy() {
         }
         continue;
       }
-      if (shouldExit(state, p, slot)) {
+      const reason = shouldExit(state, p, slot);
+      if (reason !== null) {
         p.exiting = true;
-        pendingSells.add(p.mint);
+        pendingSells.set(p.mint, reason);
         orders.push({
           side: 'sell',
           client_id: state.clientId(),
@@ -449,14 +473,17 @@ export function createStrategy() {
         if (orders.length >= PARAMS.maxNewBuysPerBatch + 1) break;
         if (!canBuy(state, t, slot)) continue;
         if (currentExposureSol() + PARAMS.dipBuySol > PARAMS.maxExposureSol) break;
-        if (!entryA(state, t, slot) && !entryB(state, t, slot)) continue;
+        const isA = entryA(state, t, slot);
+        const isB = isA ? false : entryB(state, t, slot);
+        if (!isA && !isB) continue;
+        const kind = isA ? 'A' : ('B' as const);
         const curve = state.curves.get(t.mint);
         if (!curve) continue;
         const amount = BigInt(Math.round(PARAMS.dipBuySol * LAMPORTS_PER_SOL));
         if (state.maxBuyLamports(t.mint) < amount) continue;
         if (state.freeCashLamports() < amount + state.txFeeLamports()) continue;
         const cid = state.clientId();
-        pendingBuys.set(cid, { mint: t.mint, probe: false });
+        pendingBuys.set(cid, { mint: t.mint, probe: false, kind });
         t.lastAttemptSlot = slot;
         orders.push({
           side: 'buy',
@@ -470,5 +497,5 @@ export function createStrategy() {
     return orders;
   }
 
-  return { onBatch, PARAMS };
+  return { onBatch, PARAMS, stats };
 }
