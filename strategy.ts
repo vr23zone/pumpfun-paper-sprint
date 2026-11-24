@@ -28,12 +28,16 @@ export const PARAMS = {
   bounceBuyShare15Min: 0.65,
   bounceBuySol: 0.05,
   // Exits (filled in by stage 2; values here are the tuned defaults).
-  // V5: back to the brief's exits (TP 1.18 / SL 0.88), V3 trailing kept.
-  takeProfitMult: 1.18,
+  // V14: per-kind exits — A trades (strong coins) may run, B trades scalp.
+  takeProfitMult: 1.18, // B / default
+  takeProfitMultA: 1.5,
   stopLossMult: 0.88,
+  stopLossMultA: 0.9,
   trailArmMult: 1.1,
+  trailArmMultA: 1.15,
   trailDropPct: 0.2, // exit when value < peak * (1 - trailDropPct)
   maxHoldSlots: 900,
+  maxHoldSlotsA: 1800,
   fadeNetSol15: -0.5, // V5 value: -2.0 let trades bleed to SL instead (V6 worse)
   bigSellSol: 5,
   cooldownSlots: 150,
@@ -353,10 +357,6 @@ export function createStrategy() {
     // Price back above the low of the last 15 slots: a higher low is forming.
     if (px <= w15.low * (1 + P.bounceConfirmPct)) return false;
     if (w15.netSol < P.bounceNetSol15Min) return false;
-    // Recent buying must dominate the tape: real bounce, not one stray buy.
-    if (w15.buySol < P.bounceBuySol15Min) return false;
-    if (w15.buySol + w15.sellSol <= 0) return false;
-    if (w15.buySol / (w15.buySol + w15.sellSol) < P.bounceBuyShare15Min) return false;
     if (t.buyers.size < P.bounceMinBuyers) return false;
     const realSol = solOf(curve.real_quote_reserves);
     if (realSol < P.bounceMinRealSol) return false;
@@ -392,14 +392,19 @@ export function createStrategy() {
 
   function shouldExit(state: BotState, p: PosInfo, slot: number): string | null {
     const P = PARAMS;
+    const isA = p.kind === 'A';
+    const tp = isA ? P.takeProfitMultA : P.takeProfitMult;
+    const sl = isA ? P.stopLossMultA : P.stopLossMult;
+    const arm = isA ? P.trailArmMultA : P.trailArmMult;
+    const hold = isA ? P.maxHoldSlotsA : P.maxHoldSlots;
     const value = positionValueLamports(state, p);
     const cost = p.investedLamports;
     if (value <= 0 || cost <= 0) return null;
-    if (value >= cost * P.takeProfitMult) return 'tp';
-    if (value < cost * P.stopLossMult) return 'sl';
+    if (value >= cost * tp) return 'tp';
+    if (value < cost * sl) return 'sl';
     if (value > p.peakLamports) p.peakLamports = value;
-    if (value >= cost * P.trailArmMult && value < p.peakLamports * (1 - P.trailDropPct)) return 'trail';
-    if (slot - p.openedSlot > P.maxHoldSlots && value < cost * P.trailArmMult) return 'time';
+    if (value >= cost * arm && value < p.peakLamports * (1 - P.trailDropPct)) return 'trail';
+    if (slot - p.openedSlot > hold && value < cost * arm) return 'time';
     const t = tapes.get(p.mint);
     if (t) {
       const w15 = windowStats(t, slot, 15);
