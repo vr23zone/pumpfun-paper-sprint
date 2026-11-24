@@ -53,7 +53,7 @@ export const PARAMS = {
   paceFills: 200,
   paceWindowSec: 14400,
   paceMinFrac: 0.5, // V10: probe only after half the pace window (early probes bled fees)
-  buySlippageBps: 500, // V16: reject buys that slipped >5% up in the 2-slot latency (buying the top of the bounce)
+  buySlippageBps: 1500, // V15 value restored: 500 bps rejected good fills and hurt B
   sellSlippageBps: 10000,
   maxNewBuysPerBatch: 3,
 };
@@ -119,6 +119,9 @@ export function createStrategy() {
     winsA: 0,
     winsB: 0,
     winsProbe: 0,
+    // Per-trade records for offline analysis: mint, kind, entry slot,
+    // exit slot, exit reason, realized PnL (lamports).
+    trades: [] as { m: string; k: string; e: number; x: number; r: string; p: number }[],
   };
   let fillsCount = 0;
   let firstBlockTime = 0;
@@ -250,6 +253,7 @@ export function createStrategy() {
         const p = positions.get(f.mint);
         if (p) {
           const pnl = Number(f.quote_lamports) - p.investedLamports;
+          stats.trades.push({ m: f.mint, k: p.kind, e: p.openedSlot, x: f.slot, r: reason, p: pnl });
           if (p.probe) {
             stats.pnlProbe += pnl;
             if (pnl > 0) stats.winsProbe++;

@@ -24,5 +24,6 @@ await runBot({
         `${state.positions.size} positions left, ${state.curves.size} curves seen`,
     );
     console.error(`BOT-STATS ${JSON.stringify(strategy.stats)}`);
+    console.error(`BOT-TRADES ${JSON.stringify(strategy.stats.trades)}`);
   },
 });
