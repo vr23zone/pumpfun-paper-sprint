@@ -19,11 +19,11 @@ export const PARAMS = {
   dipBuySol: 0.05,
   // Entry B — oversold bounce / higher low forming.
   bounceMinAgeSlots: 120,
-  bounceDropPct: 0.2, // price <= high60 * (1 - drop)
-  bounceConfirmPct: 0, // price must already be >= low15 * (1 + confirm)
-  bounceNetSol15Min: 0, // net SOL over the last 15 slots
-  bounceMinRealSol: 2,
-  bounceMinBuyers: 5,
+  bounceDropPct: 0.25, // V9: tighten B like A (drop deeper, confirm the bounce)
+  bounceConfirmPct: 0.05, // price must already be >= low15 * (1 + confirm)
+  bounceNetSol15Min: 0.1, // net SOL over the last 15 slots
+  bounceMinRealSol: 3,
+  bounceMinBuyers: 8,
   bounceBuySol: 0.05,
   // Exits (filled in by stage 2; values here are the tuned defaults).
   // V5: back to the brief's exits (TP 1.18 / SL 0.88), V3 trailing kept.
