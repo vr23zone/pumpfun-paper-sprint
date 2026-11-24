@@ -22,10 +22,10 @@ export const PARAMS = {
   bounceDropPct: 0.2, // V10 value restored: 30% dips were falling knives
   bounceConfirmPct: 0, // price must already be >= low15 * (1 + confirm)
   bounceNetSol15Min: 0, // net SOL over the last 15 slots
-  bounceNetSol30Min: 0.3, // V12: B needs sustained buying over 30 slots too
-  bounceBuys30Min: 3,
   bounceMinRealSol: 2,
   bounceMinBuyers: 5,
+  bounceBuySol15Min: 0.2, // V13: B needs dominant recent buying (buy SOL + share)
+  bounceBuyShare15Min: 0.65,
   bounceBuySol: 0.05,
   // Exits (filled in by stage 2; values here are the tuned defaults).
   // V5: back to the brief's exits (TP 1.18 / SL 0.88), V3 trailing kept.
@@ -154,6 +154,8 @@ export function createStrategy() {
     let low = Number.POSITIVE_INFINITY;
     let netSol = 0;
     let buys = 0;
+    let buySol = 0;
+    let sellSol = 0;
     let seen = 0;
     const from = slot - span;
     for (const tr of t.trades) {
@@ -162,9 +164,14 @@ export function createStrategy() {
       if (tr.price > high) high = tr.price;
       if (tr.price < low) low = tr.price;
       netSol += tr.buy ? tr.sol : -tr.sol;
-      if (tr.buy) buys++;
+      if (tr.buy) {
+        buys++;
+        buySol += tr.sol;
+      } else {
+        sellSol += tr.sol;
+      }
     }
-    return { high, low: seen > 0 ? low : 0, netSol, buys, seen };
+    return { high, low: seen > 0 ? low : 0, netSol, buys, buySol, sellSol, seen };
   }
 
   // ---- fills: keep intent state in step with the reported account ----
@@ -346,9 +353,10 @@ export function createStrategy() {
     // Price back above the low of the last 15 slots: a higher low is forming.
     if (px <= w15.low * (1 + P.bounceConfirmPct)) return false;
     if (w15.netSol < P.bounceNetSol15Min) return false;
-    const w30b = windowStats(t, slot, 30);
-    if (w30b.netSol < P.bounceNetSol30Min) return false;
-    if (w30b.buys < P.bounceBuys30Min) return false;
+    // Recent buying must dominate the tape: real bounce, not one stray buy.
+    if (w15.buySol < P.bounceBuySol15Min) return false;
+    if (w15.buySol + w15.sellSol <= 0) return false;
+    if (w15.buySol / (w15.buySol + w15.sellSol) < P.bounceBuyShare15Min) return false;
     if (t.buyers.size < P.bounceMinBuyers) return false;
     const realSol = solOf(curve.real_quote_reserves);
     if (realSol < P.bounceMinRealSol) return false;
