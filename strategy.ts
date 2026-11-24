@@ -29,16 +29,18 @@ export const PARAMS = {
   bounceBuySol: 0.05,
   // Exits (filled in by stage 2; values here are the tuned defaults).
   // V14: per-kind exits — A trades (strong coins) may run, B trades scalp.
-  takeProfitMult: 1.18, // B / default
+  // V15: B scalps harder (TP 1.12, SL 0.90, fade -0.3, hold 600).
+  takeProfitMult: 1.12, // B / default
   takeProfitMultA: 1.5,
-  stopLossMult: 0.88,
+  stopLossMult: 0.9,
   stopLossMultA: 0.9,
   trailArmMult: 1.1,
   trailArmMultA: 1.15,
   trailDropPct: 0.2, // exit when value < peak * (1 - trailDropPct)
-  maxHoldSlots: 900,
+  maxHoldSlots: 600,
   maxHoldSlotsA: 1800,
-  fadeNetSol15: -0.5, // V5 value: -2.0 let trades bleed to SL instead (V6 worse)
+  fadeNetSol15: -0.3, // B / default
+  fadeNetSol15A: -0.5,
   bigSellSol: 5,
   cooldownSlots: 150,
   // Risk / pacing.
@@ -397,6 +399,7 @@ export function createStrategy() {
     const sl = isA ? P.stopLossMultA : P.stopLossMult;
     const arm = isA ? P.trailArmMultA : P.trailArmMult;
     const hold = isA ? P.maxHoldSlotsA : P.maxHoldSlots;
+    const fade = isA ? P.fadeNetSol15A : P.fadeNetSol15;
     const value = positionValueLamports(state, p);
     const cost = p.investedLamports;
     if (value <= 0 || cost <= 0) return null;
@@ -408,7 +411,7 @@ export function createStrategy() {
     const t = tapes.get(p.mint);
     if (t) {
       const w15 = windowStats(t, slot, 15);
-      if (w15.netSol < P.fadeNetSol15) return 'fade';
+      if (w15.netSol < fade) return 'fade';
       // Any single recorded sell >= bigSellSol since we opened.
       for (const tr of t.trades) {
         if (tr.slot > p.openedSlot && !tr.buy && tr.sol >= P.bigSellSol) return 'bigsell';
