@@ -8,13 +8,13 @@ export const LAMPORTS_PER_SOL = 1_000_000_000;
 export const PARAMS = {
   // Entry A — dip buy after a run-up and pullback.
   dipMinAgeSlots: 300,
-  dipRunupPct: 0.25, // price >= firstPrice * (1 + runup)
-  dipPullbackPct: 0.12, // price <= high60 * (1 - pullback)
-  dipNetSol30: 0.3, // net SOL bought over last 30 slots
+  dipRunupPct: 0.35, // V8: tighten A only (B is the better leg: 37% WR vs 23%)
+  dipPullbackPct: 0.15, // price <= high60 * (1 - pullback)
+  dipNetSol30: 0.5, // net SOL bought over last 30 slots
   dipNetSol15Min: 0, // buying must still be flowing over the last 15 slots
-  dipBuys30: 3, // buys in last 30 slots
-  dipMinBuyers: 5,
-  dipMinRealSol: 2,
+  dipBuys30: 5, // buys in last 30 slots
+  dipMinBuyers: 8,
+  dipMinRealSol: 3,
   dipMaxRealSol: 60,
   dipBuySol: 0.05,
   // Entry B — oversold bounce / higher low forming.
