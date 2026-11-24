@@ -19,7 +19,7 @@ export const PARAMS = {
   dipBuySol: 0.05,
   // Entry B — oversold bounce / higher low forming.
   bounceMinAgeSlots: 120,
-  bounceDropPct: 0.2, // V8 values restored: V9's 5% confirm bought the top of the bounce
+  bounceDropPct: 0.3, // V11: deeper dip for B (mean reversion is stronger off a 30% drop)
   bounceConfirmPct: 0, // price must already be >= low15 * (1 + confirm)
   bounceNetSol15Min: 0, // net SOL over the last 15 slots
   bounceMinRealSol: 2,
