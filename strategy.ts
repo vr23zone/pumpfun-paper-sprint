@@ -22,10 +22,11 @@ export const PARAMS = {
   bounceDropPct: 0.2, // V10 value restored: 30% dips were falling knives
   bounceConfirmPct: 0.03, // V18: price already >= low15 * 1.03 (winners bounced 8.6% off low vs 5.4%)
   bounceNetSol15Min: 0, // net SOL over the last 15 slots
-  bounceMinRealSol: 5, // V18: winners sat on 19 SOL real vs 13 (bigger coins bounce better)
+  bounceMinRealSol: 15, // V19: winners sat on 28.6 SOL real vs 15.3
   bounceMinBuyers: 5,
-  bounceBuySol15Min: 2, // V18: winners had 5.25 SOL bought in 15 slots vs 2.75
-  bounceBuys15Min: 6, // V18: winners had 12 buys in 15 slots vs 7
+  bounceBuySol15Min: 5, // V19: winners had 9.8 SOL bought in 15 slots vs 5.45
+  bounceBuys15Min: 12, // V19: winners had 24 buys in 15 slots vs 11
+  bounceSlope15Max: 0.1, // V19: losers rose faster into entry (12.3% vs 9.6%) — no vertical pumps
   bounceBuySol: 0.05,
   // Exits (filled in by stage 2; values here are the tuned defaults).
   // V14: per-kind exits — A trades (strong coins) may run, B trades scalp.
@@ -161,6 +162,7 @@ export function createStrategy() {
   function windowStats(t: CurveTape, slot: number, span: number) {
     let high = 0;
     let low = Number.POSITIVE_INFINITY;
+    let firstPrice = 0;
     let netSol = 0;
     let buys = 0;
     let buySol = 0;
@@ -170,6 +172,7 @@ export function createStrategy() {
     for (const tr of t.trades) {
       if (tr.slot < from) continue;
       seen++;
+      if (firstPrice === 0) firstPrice = tr.price;
       if (tr.price > high) high = tr.price;
       if (tr.price < low) low = tr.price;
       netSol += tr.buy ? tr.sol : -tr.sol;
@@ -180,7 +183,7 @@ export function createStrategy() {
         sellSol += tr.sol;
       }
     }
-    return { high, low: seen > 0 ? low : 0, netSol, buys, buySol, sellSol, seen };
+    return { high, low: seen > 0 ? low : 0, firstPrice, netSol, buys, buySol, sellSol, seen };
   }
 
   // ---- fills: keep intent state in step with the reported account ----
@@ -365,6 +368,8 @@ export function createStrategy() {
     if (w15.netSol < P.bounceNetSol15Min) return false;
     if (w15.buySol < P.bounceBuySol15Min) return false;
     if (w15.buys < P.bounceBuys15Min) return false;
+    // Don't chase a vertical pump: the 15-slot rise must be modest.
+    if (w15.firstPrice > 0 && px > w15.firstPrice * (1 + P.bounceSlope15Max)) return false;
     if (t.buyers.size < P.bounceMinBuyers) return false;
     const realSol = solOf(curve.real_quote_reserves);
     if (realSol < P.bounceMinRealSol) return false;
