@@ -8,30 +8,30 @@ export const LAMPORTS_PER_SOL = 1_000_000_000;
 export const PARAMS = {
   // Entry A — dip buy after a run-up and pullback.
   dipMinAgeSlots: 300,
-  dipRunupPct: 0.4, // price >= firstPrice * (1 + runup)
-  dipPullbackPct: 0.15, // price <= high60 * (1 - pullback)
-  dipNetSol30: 0.5, // net SOL bought over last 30 slots
+  dipRunupPct: 0.25, // price >= firstPrice * (1 + runup)
+  dipPullbackPct: 0.12, // price <= high60 * (1 - pullback)
+  dipNetSol30: 0.3, // net SOL bought over last 30 slots
   dipNetSol15Min: 0, // buying must still be flowing over the last 15 slots
-  dipBuys30: 5, // buys in last 30 slots
-  dipMinBuyers: 8,
-  dipMinRealSol: 3,
+  dipBuys30: 3, // buys in last 30 slots
+  dipMinBuyers: 5,
+  dipMinRealSol: 2,
   dipMaxRealSol: 60,
   dipBuySol: 0.05,
   // Entry B — oversold bounce / higher low forming.
   bounceMinAgeSlots: 120,
-  bounceDropPct: 0.25, // price <= high60 * (1 - drop)
-  bounceConfirmPct: 0.05, // price must already be >= low15 * (1 + confirm)
-  bounceNetSol15Min: 0.1, // net SOL over the last 15 slots
-  bounceMinRealSol: 3,
-  bounceMinBuyers: 8,
+  bounceDropPct: 0.2, // price <= high60 * (1 - drop)
+  bounceConfirmPct: 0, // price must already be >= low15 * (1 + confirm)
+  bounceNetSol15Min: 0, // net SOL over the last 15 slots
+  bounceMinRealSol: 2,
+  bounceMinBuyers: 5,
   bounceBuySol: 0.05,
   // Exits (filled in by stage 2; values here are the tuned defaults).
-  // V3: let winners run — high fixed TP, trailing stop does the work.
-  takeProfitMult: 1.5,
-  stopLossMult: 0.9,
-  trailArmMult: 1.15,
+  // V5: back to the brief's exits (TP 1.18 / SL 0.88), V3 trailing kept.
+  takeProfitMult: 1.18,
+  stopLossMult: 0.88,
+  trailArmMult: 1.1,
   trailDropPct: 0.2, // exit when value < peak * (1 - trailDropPct)
-  maxHoldSlots: 1200,
+  maxHoldSlots: 900,
   fadeNetSol15: -0.5,
   bigSellSol: 5,
   cooldownSlots: 150,
@@ -296,13 +296,9 @@ export function createStrategy() {
     const w60 = windowStats(t, slot, 60);
     if (w60.seen === 0) return false;
     if (px > w60.high * (1 - P.dipPullbackPct)) return false;
-    const w15a = windowStats(t, slot, 15);
-    // Price must already be recovering off its 15-slot low.
-    if (w15a.seen > 0 && px <= w15a.low * 1.03) return false;
     const w30 = windowStats(t, slot, 30);
     if (w30.netSol < P.dipNetSol30) return false;
     if (w30.buys < P.dipBuys30) return false;
-    if (w15a.netSol < P.dipNetSol15Min) return false;
     if (t.buyers.size < P.dipMinBuyers) return false;
     const realSol = solOf(curve.real_quote_reserves);
     if (realSol < P.dipMinRealSol || realSol > P.dipMaxRealSol) return false;
