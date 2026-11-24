@@ -53,7 +53,7 @@ export const PARAMS = {
   paceFills: 200,
   paceWindowSec: 14400,
   paceMinFrac: 0.5, // V10: probe only after half the pace window (early probes bled fees)
-  buySlippageBps: 1500,
+  buySlippageBps: 500, // V16: reject buys that slipped >5% up in the 2-slot latency (buying the top of the bounce)
   sellSlippageBps: 10000,
   maxNewBuysPerBatch: 3,
 };
