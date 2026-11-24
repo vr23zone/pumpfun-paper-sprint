@@ -29,17 +29,17 @@ export const PARAMS = {
   bounceSlope15Max: 0.1, // V19: losers rose faster into entry (12.3% vs 9.6%) — no vertical pumps
   bounceBuySol: 0.05,
   // Exits (filled in by stage 2; values here are the tuned defaults).
-  // V14: per-kind exits — A trades (strong coins) may run, B trades scalp.
-  // V15: B scalps harder (TP 1.12, SL 0.90, fade -0.3, hold 600).
+  // V21 (safer pass after stress median -0.10, 10/10 copies losing):
+  // bank A winners sooner, tighter stops, less give-back.
   takeProfitMult: 1.12, // B / default
-  takeProfitMultA: 1.5,
-  stopLossMult: 0.9,
-  stopLossMultA: 0.9,
+  takeProfitMultA: 1.3,
+  stopLossMult: 0.92,
+  stopLossMultA: 0.93,
   trailArmMult: 1.1,
-  trailArmMultA: 1.15,
-  trailDropPct: 0.2, // exit when value < peak * (1 - trailDropPct)
+  trailArmMultA: 1.1,
+  trailDropPct: 0.15, // exit when value < peak * (1 - trailDropPct)
   maxHoldSlots: 600,
-  maxHoldSlotsA: 1800,
+  maxHoldSlotsA: 1200,
   fadeNetSol15: -0.3, // B / default
   fadeNetSol15A: -0.5,
   bigSellSol: 5,
