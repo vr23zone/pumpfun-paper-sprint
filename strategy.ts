@@ -9,8 +9,9 @@ export const PARAMS = {
   // Entry A — dip buy after a run-up and pullback.
   dipMinAgeSlots: 300,
   dipRunupPct: 0.25, // price >= firstPrice * (1 + runup)
-  dipPullbackPct: 0.1, // price <= high60 * (1 - pullback)
-  dipNetSol30: 0.2, // net SOL bought over last 30 slots
+  dipPullbackPct: 0.12, // price <= high60 * (1 - pullback)
+  dipNetSol30: 0.3, // net SOL bought over last 30 slots
+  dipNetSol15Min: 0, // buying must still be flowing over the last 15 slots
   dipBuys30: 3, // buys in last 30 slots
   dipMinBuyers: 5,
   dipMinRealSol: 2,
@@ -18,17 +19,20 @@ export const PARAMS = {
   dipBuySol: 0.05,
   // Entry B — oversold bounce / higher low forming.
   bounceMinAgeSlots: 120,
-  bounceDropPct: 0.15, // price <= high60 * (1 - drop)
+  bounceDropPct: 0.2, // price <= high60 * (1 - drop)
+  bounceConfirmPct: 0.03, // price must already be >= low15 * (1 + confirm)
+  bounceNetSol15Min: 0.05, // net SOL over the last 15 slots
   bounceMinRealSol: 2,
   bounceMinBuyers: 5,
   bounceBuySol: 0.05,
   // Exits (filled in by stage 2; values here are the tuned defaults).
-  takeProfitMult: 1.1,
-  stopLossMult: 0.95,
-  trailArmMult: 1.06,
-  trailDropPct: 0.15, // exit when value < peak * (1 - trailDropPct)
-  maxHoldSlots: 600,
-  fadeNetSol15: -0.3,
+  // V3: let winners run — high fixed TP, trailing stop does the work.
+  takeProfitMult: 1.5,
+  stopLossMult: 0.9,
+  trailArmMult: 1.15,
+  trailDropPct: 0.2, // exit when value < peak * (1 - trailDropPct)
+  maxHoldSlots: 1200,
+  fadeNetSol15: -0.5,
   bigSellSol: 5,
   cooldownSlots: 150,
   // Risk / pacing.
@@ -295,6 +299,8 @@ export function createStrategy() {
     const w30 = windowStats(t, slot, 30);
     if (w30.netSol < P.dipNetSol30) return false;
     if (w30.buys < P.dipBuys30) return false;
+    const w15a = windowStats(t, slot, 15);
+    if (w15a.netSol < P.dipNetSol15Min) return false;
     if (t.buyers.size < P.dipMinBuyers) return false;
     const realSol = solOf(curve.real_quote_reserves);
     if (realSol < P.dipMinRealSol || realSol > P.dipMaxRealSol) return false;
@@ -315,9 +321,10 @@ export function createStrategy() {
     if (px > w60.high * (1 - P.bounceDropPct)) return false;
     const w15 = windowStats(t, slot, 15);
     if (w15.seen === 0) return false;
-    // Price back above the low of the last 15 slots: a higher low is forming.
-    if (px <= w15.low) return false;
-    if (w15.netSol < 0) return false;
+    // Price back above the low of the last 15 slots: a higher low is forming,
+    // and it must already have bounced off that low (confirmation, not hope).
+    if (px <= w15.low * (1 + P.bounceConfirmPct)) return false;
+    if (w15.netSol < P.bounceNetSol15Min) return false;
     if (t.buyers.size < P.bounceMinBuyers) return false;
     const realSol = solOf(curve.real_quote_reserves);
     if (realSol < P.bounceMinRealSol) return false;
