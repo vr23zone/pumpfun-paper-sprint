@@ -32,7 +32,7 @@ export const PARAMS = {
   trailArmMult: 1.1,
   trailDropPct: 0.2, // exit when value < peak * (1 - trailDropPct)
   maxHoldSlots: 900,
-  fadeNetSol15: -0.5,
+  fadeNetSol15: -2, // V6: -0.5 fired on noise (71/92 exits) and cut bounces early
   bigSellSol: 5,
   cooldownSlots: 150,
   // Risk / pacing.
