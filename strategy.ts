@@ -19,9 +19,11 @@ export const PARAMS = {
   dipBuySol: 0.05,
   // Entry B — oversold bounce / higher low forming.
   bounceMinAgeSlots: 120,
-  bounceDropPct: 0.3, // V11: deeper dip for B (mean reversion is stronger off a 30% drop)
+  bounceDropPct: 0.2, // V10 value restored: 30% dips were falling knives
   bounceConfirmPct: 0, // price must already be >= low15 * (1 + confirm)
   bounceNetSol15Min: 0, // net SOL over the last 15 slots
+  bounceNetSol30Min: 0.3, // V12: B needs sustained buying over 30 slots too
+  bounceBuys30Min: 3,
   bounceMinRealSol: 2,
   bounceMinBuyers: 5,
   bounceBuySol: 0.05,
@@ -341,10 +343,12 @@ export function createStrategy() {
     if (px > w60.high * (1 - P.bounceDropPct)) return false;
     const w15 = windowStats(t, slot, 15);
     if (w15.seen === 0) return false;
-    // Price back above the low of the last 15 slots: a higher low is forming,
-    // and it must already have bounced off that low (confirmation, not hope).
+    // Price back above the low of the last 15 slots: a higher low is forming.
     if (px <= w15.low * (1 + P.bounceConfirmPct)) return false;
     if (w15.netSol < P.bounceNetSol15Min) return false;
+    const w30b = windowStats(t, slot, 30);
+    if (w30b.netSol < P.bounceNetSol30Min) return false;
+    if (w30b.buys < P.bounceBuys30Min) return false;
     if (t.buyers.size < P.bounceMinBuyers) return false;
     const realSol = solOf(curve.real_quote_reserves);
     if (realSol < P.bounceMinRealSol) return false;
